@@ -1,69 +1,98 @@
 #!/usr/bin/env python3
 
 import urllib, pathlib, time, datetime
-import linecache, logging, subprocess, os
-import feedparser
-import schedule
+import os, csv
+import feedparser, schedule
+import mplayerSlave
+
+# set vars and instances
+ENV_KOD      = os.getenv('KOD')
+BASE_DIR     = pathlib.Path(__file__).parent
+azan_csv     = BASE_DIR.joinpath('azan.csv')
+azan_music   = BASE_DIR.joinpath('azan.m4a')
+log_file     = BASE_DIR.joinpath('logfile.txt')
+feed_link    = 'https://www.e-solat.gov.my/index.php?r=esolatApi/xmlfeed&zon=' + ENV_KOD
+mplayer      = mplayerSlave.MPlayer()
 
 # Logging features
-logging.basicConfig(
-        # for debugging, uncomment this line to write log in file
-        #filename='logfile.txt',
-        format='%(asctime)s - %(levelname)s - %(message)s',
-        datefmt='(%d-%b-%y %H:%M:%S)',
-        level=logging.INFO)
+import logging
+from logging.handlers import RotatingFileHandler
+
+log_handler = RotatingFileHandler(log_file, mode='a', maxBytes=5*1024*1024, 
+                                 backupCount=2, encoding=None, delay=0)
+log_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+log_handler.setLevel(logging.INFO)
 logger = logging.getLogger(__name__)
+logger.addHandler(log_handler)
+logger.setLevel(logging.INFO)
 
-# set variables
-BASE_DIR = pathlib.Path(__file__).parent
-feed_link = 'https://www.e-solat.gov.my/index.php?r=esolatApi/xmlfeed&zon=' + os.getenv('KOD')
-
-azan_time = BASE_DIR.joinpath('azan-time.txt')
-azan_music = BASE_DIR.joinpath('azan.m4a')
-
-def update_time():
+def update_csv():
     logger.info('Update time for azan in file.')
     while True:
-        try: feed = feedparser.parse(feed_link)
-        except urllib.error.URLError: continue
+        try:
+            feed = feedparser.parse(feed_link)
+        except urllib.error.URLError:
+            logger.info('Update csv_file status: Success!')
+            continue
         break
     last_update = datetime.datetime.strptime(feed.feed.updated, '%d-%m-%Y %H:%M:%S').strftime('%d-%m-%Y')
-    solat_data = [['Last update', last_update]]
-    for i in range(7):
-        solat_name = feed.entries[i].title
-        solat_time = datetime.datetime.strptime(feed.entries[i].summary, '%H:%M:%S').strftime('%H:%M')
-        solat_data.append([solat_name, solat_time])
-    with open(azan_time, 'w') as opened_file:
-        for i in solat_data:
-            opened_file.write(f'{i[0]}\n')
-            opened_file.write(f'{i[1]}\n')
+    with open(azan_csv, 'w', newline='') as csvfile:
+        csvwriter = csv.writer(csvfile)
+        csvwriter.writerow(['Last update', last_update])
+        for i in range(7):
+            solat_name = feed.entries[i].title
+            solat_time = datetime.datetime.strptime(feed.entries[i].summary, '%H:%M:%S').strftime('%H:%M')
+            csvwriter.writerow([solat_name, solat_time])
 
-def create_job():
-    logger.info('Create job schedule for azan today.')
-    data = azan_time.read_text().split('\n')
-    schedule.every().day.at(data[5]).do(begin_azan)
-    schedule.every().day.at(data[9]).do(begin_azan)
-    schedule.every().day.at(data[11]).do(begin_azan)
-    schedule.every().day.at(data[13]).do(begin_azan)
-    schedule.every().day.at(data[15]).do(begin_azan)
+def csv_iscurrent():
+    with open(azan_csv, newline='') as csvfile:
+        csvreader = csv.reader(csvfile)
+        date_updated = csvreader.__next__()[1]
+    date_today = datetime.datetime.now().date()
+    date_csv = datetime.datetime.strptime(date_updated, '%d-%m-%Y').date()
+    status = date_today == date_csv
+    logger.info(f'Azan time csv_file is_current: {status}')
+    return status
 
-def create_job_once():
-    logger.info('Check azan time for today.')
-    now = datetime.datetime.now()
-    data = azan_time.read_text().split('\n')
-    pending = [data[5], data[9], data[11], data[13], data[15]]
-    for i in pending:
-        hour_min = i.split(':')
-        pending_item = now.replace(hour=int(hour_min[0]), minute=int(hour_min[1]))
-        if pending_item > now:
-            schedule.every().day.at(i).do(begin_azan)
-            logger.info(f'Schedule azan at {i}.')
+def create_azan_job():
+    time_selection = ['Subuh', 'Zohor', 'Asar', 'Maghrib', 'Isyak']
+    with open(azan_csv, newline='') as csvfile:
+        reader = csv.reader(csvfile)
+        for i in reader:
+            if i[0] in time_selection:
+                time_azan = datetime.datetime.strptime(i[1], '%H:%M').time()
+                time_now = datetime.datetime.now().time()
+                if time_now < time_azan:
+                    schedule.every().day.at(i[1]).do(begin_azan)
+                    logger.info(f'Azan job created for: {i[0]}')
+                    break
+                else:
+                    logger.info(f'Azan for {i[0]} has passed')
+    time.sleep(5)
+    if schedule.idle_seconds() is None:
+        schedule.every().day.at('01:00').do(wait_next_day)
+        logger.info(f'Schedule job created for next day')
+    else:
+        pass
+
+def wait_next_day():
+    create_azan_job()
     return schedule.CancelJob
+
+def wait_next_job():
+    while True:
+        n = schedule.idle_seconds()
+        if n is None:
+            time.sleep(5) 
+        elif n > 0:
+            logger.info(f'Next job in {round(n/60, 2)} minutes...')
+            time.sleep(n)
+            schedule.run_pending()
+            break
 
 def begin_azan():
     logger.info('Playing azan now.')
-    bash_command = f'mplayer -volume {os.getenv("VOL")} {azan_music.resolve()}'
-    subprocess.run(bash_command.split())
+    mplayer.loadfile(azan_music.resolve())
     return schedule.CancelJob
 
 def allow_no_certificate():
@@ -78,19 +107,17 @@ def allow_no_certificate():
 
 def main():
     allow_no_certificate()
-    if not azan_time.exists():
-        logger.info('File "azan-time.txt" not exists.')
-        update_time()
-    schedule.every(3).seconds.do(create_job_once)
-    schedule.every().day.at('00:05').do(update_time)
-    schedule.every().day.at('00:10').do(create_job)
-    logger.info('Running service in background...')
+    update_csv()
     while True:
-        n = schedule.idle_seconds()
-        logger.info(f'Next job in {round(n/60, 2)} minutes...')
-        if n is None: break
-        elif n > 0: time.sleep(n)
-        schedule.run_pending()
+        time.sleep(5)
+        azan_time_is_updated = csv_iscurrent()
+        if azan_time_is_updated:
+            create_azan_job()
+            wait_next_job()
+        if not azan_time_is_updated:
+            update_csv()
+            create_azan_job()
+            wait_next_job()
 
 if __name__ == '__main__':
     try:
