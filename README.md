@@ -18,7 +18,7 @@ This app uses the power of `Docker Engine` and can run on any device that runs D
     ```
     docker build -t muazzin .
     ```
-2. Run the docker in persistence. Remember tu use your desired `KOD_KAWASAN`.
+2. Run the docker in persistence. Remember to use your desired `KOD_KAWASAN`.
     ```
     docker run \
         --detach \

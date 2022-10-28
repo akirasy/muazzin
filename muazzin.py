@@ -27,22 +27,33 @@ logger.addHandler(log_handler)
 logger.setLevel(logging.INFO)
 
 def update_csv():
-    logger.info('Update time for azan in file.')
-    while True:
-        try:
-            feed = feedparser.parse(feed_link)
-        except urllib.error.URLError:
-            logger.info('Update csv_file status: Success!')
-            continue
-        break
-    last_update = datetime.datetime.strptime(feed.feed.updated, '%d-%m-%Y %H:%M:%S').strftime('%d-%m-%Y')
-    with open(azan_csv, 'w', newline='') as csvfile:
-        csvwriter = csv.writer(csvfile)
-        csvwriter.writerow(['Last update', last_update])
-        for i in range(7):
-            solat_name = feed.entries[i].title
-            solat_time = datetime.datetime.strptime(feed.entries[i].summary, '%H:%M:%S').strftime('%H:%M')
-            csvwriter.writerow([solat_name, solat_time])
+    logger.info('Check for azan time in file.')
+    if azan_csv.exists():
+       azan_time_is_updated = csv_iscurrent()
+    else:
+       azan_time_is_updated = False
+
+    if azan_time_is_updated:
+        logger.info('-- Azan time in file is already updated.')
+    else:
+        logger.info('-- Azan time in file is not updated.')
+        while True:
+            try:
+                feed = feedparser.parse(feed_link)
+                logger.info('-- Update csv_file status: Success!')
+            except urllib.error.URLError:
+                logger.exception('-- Update csv_file status: Failed! No internet connection.')
+                time.sleep(360)
+                continue
+            break
+        last_update = datetime.datetime.strptime(feed.feed.updated, '%d-%m-%Y %H:%M:%S').strftime('%d-%m-%Y')
+        with open(azan_csv, 'w', newline='') as csvfile:
+            csvwriter = csv.writer(csvfile)
+            csvwriter.writerow(['Last update', last_update])
+            for i in range(7):
+                solat_name = feed.entries[i].title
+                solat_time = datetime.datetime.strptime(feed.entries[i].summary, '%H:%M:%S').strftime('%H:%M')
+                csvwriter.writerow([solat_name, solat_time])
 
 def csv_iscurrent():
     with open(azan_csv, newline='') as csvfile:
@@ -51,10 +62,11 @@ def csv_iscurrent():
     date_today = datetime.datetime.now().date()
     date_csv = datetime.datetime.strptime(date_updated, '%d-%m-%Y').date()
     status = date_today == date_csv
-    logger.info(f'Azan time csv_file is_current: {status}')
+    logger.info(f'-- Azan time csv_file is_current: {status}')
     return status
 
 def create_azan_job():
+    logger.info('Create schedule job for azan.')
     time_selection = ['Subuh', 'Zohor', 'Asar', 'Maghrib', 'Isyak']
     with open(azan_csv, newline='') as csvfile:
         reader = csv.reader(csvfile)
@@ -64,19 +76,19 @@ def create_azan_job():
                 time_now = datetime.datetime.now().time()
                 if time_now < time_azan:
                     schedule.every().day.at(i[1]).do(begin_azan)
-                    logger.info(f'Azan job created for: {i[0]}')
+                    logger.info(f'-- Azan job created for: {i[0]}')
                     break
                 else:
-                    logger.info(f'Azan for {i[0]} has passed')
+                    logger.info(f'-- Azan for {i[0]} has passed')
     time.sleep(5)
     if schedule.idle_seconds() is None:
         schedule.every().day.at('01:00').do(wait_next_day)
-        logger.info(f'Schedule job created for next day')
+        logger.info(f'-- Schedule job created for next day')
     else:
         pass
 
 def wait_next_day():
-    create_azan_job()
+    update_csv()
     return schedule.CancelJob
 
 def wait_next_job():
@@ -107,17 +119,11 @@ def allow_no_certificate():
 
 def main():
     allow_no_certificate()
-    update_csv()
     while True:
+        update_csv()
+        create_azan_job()
+        wait_next_job()
         time.sleep(5)
-        azan_time_is_updated = csv_iscurrent()
-        if azan_time_is_updated:
-            create_azan_job()
-            wait_next_job()
-        if not azan_time_is_updated:
-            update_csv()
-            create_azan_job()
-            wait_next_job()
 
 if __name__ == '__main__':
     try:
