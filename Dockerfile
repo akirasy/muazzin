@@ -10,8 +10,7 @@ RUN useradd --create-home --groups audio muazzin
 WORKDIR /home/muazzin
 
 # Install python module
-COPY requirements.txt /home/muazzin/requirements.txt
-RUN pip3 install --no-cache-dir -r requirements.txt
+RUN pip3 install --no-cache-dir feedparser==6.0.2
 
 # Setup environment
 ENV TZ="Asia/Kuala_Lumpur"

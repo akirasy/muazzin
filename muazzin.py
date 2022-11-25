@@ -2,7 +2,7 @@
 
 import urllib, pathlib, time, datetime
 import os, csv
-import feedparser, schedule
+import feedparser
 import mplayerSlave
 
 # set vars and instances
@@ -41,11 +41,11 @@ def update_csv():
             try:
                 feed = feedparser.parse(feed_link)
                 logger.info('-- Update csv_file status: Success!')
+                break
             except urllib.error.URLError:
                 logger.exception('-- Update csv_file status: Failed! No internet connection.')
+                logger.exception('-- Update csv_file status: Retrying in 6 minutes.')
                 time.sleep(360)
-                continue
-            break
         last_update = datetime.datetime.strptime(feed.feed.updated, '%d-%m-%Y %H:%M:%S').strftime('%d-%m-%Y')
         with open(azan_csv, 'w', newline='') as csvfile:
             csvwriter = csv.writer(csvfile)
@@ -65,47 +65,38 @@ def csv_iscurrent():
     logger.info(f'-- Azan time csv_file is_current: {status}')
     return status
 
-def create_azan_job():
-    logger.info('Create schedule job for azan.')
+def create_job():
+    logger.info('Create schedule job.')
     time_selection = ['Subuh', 'Zohor', 'Asar', 'Maghrib', 'Isyak']
+    now = datetime.datetime.now()
+    wait_time = None
     with open(azan_csv, newline='') as csvfile:
         reader = csv.reader(csvfile)
         for i in reader:
             if i[0] in time_selection:
-                time_azan = datetime.datetime.strptime(i[1], '%H:%M').time()
-                time_now = datetime.datetime.now().time()
-                if time_now < time_azan:
-                    schedule.every().day.at(i[1]).do(begin_azan)
-                    logger.info(f'-- Azan job created for: {i[0]}')
-                    break
+                azan_time = datetime.datetime.strptime(i[1], '%H:%M')
+                azan_dt = datetime.datetime(year=now.year, month=now.month, day=now.day, hour=azan_time.hour, minute=azan_time.minute)
+                if now < azan_dt:
+                    wait_time = (azan_dt - now).total_seconds()
+                    logger.info(f'-- Schedule azan for: {i[0]}')
+                    logger.info(f'-- Wait time till next job: {round(wait_time/(60*60), 2)} hours')
+                    time.sleep(wait_time)
+                    begin_azan()
+                    return
                 else:
                     logger.info(f'-- Azan for {i[0]} has passed')
-    time.sleep(5)
-    if schedule.idle_seconds() is None:
-        schedule.every().day.at('01:00').do(wait_next_day)
-        logger.info(f'-- Schedule job created for next day')
-    else:
-        pass
-
-def wait_next_day():
-    update_csv()
-    return schedule.CancelJob
-
-def wait_next_job():
-    while True:
-        n = schedule.idle_seconds()
-        if n is None:
-            time.sleep(5) 
-        elif n > 0:
-            logger.info(f'Next job in {round(n/60, 2)} minutes...')
-            time.sleep(n)
-            schedule.run_pending()
-            break
+    if wait_time is None:
+        logger.info(f'-- Schedule job for next day')
+        next_day_dt = datetime.datetime(year=now.year, month=now.month, day=now.day+1, hour=1)
+        wait_time = (next_day_dt - now).total_seconds()
+        logger.info(f'-- Wait time till next job: {round(wait_time/(60*60), 2)} hours')
+        time.sleep(wait_time)
+        update_csv()
+        return
 
 def begin_azan():
     logger.info('Playing azan now.')
     mplayer.loadfile(azan_music.resolve())
-    return schedule.CancelJob
 
 def allow_no_certificate():
     import ssl 
@@ -121,9 +112,7 @@ def main():
     allow_no_certificate()
     while True:
         update_csv()
-        create_azan_job()
-        wait_next_job()
-        time.sleep(5)
+        create_job()
 
 if __name__ == '__main__':
     try:
