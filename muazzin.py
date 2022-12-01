@@ -87,7 +87,7 @@ def create_job():
                     logger.info(f'-- Azan for {i[0]} has passed')
     if wait_time is None:
         logger.info(f'-- Schedule job for next day')
-        next_day_dt = datetime.datetime(year=now.year, month=now.month, day=now.day+1, hour=1)
+        next_day_dt = datetime.datetime(year=now.year, month=now.month, day=now.day, hour=1) + datetime.timedelta(days=1)
         wait_time = (next_day_dt - now).total_seconds()
         logger.info(f'-- Wait time till next job: {round(wait_time/(60*60), 2)} hours')
         time.sleep(wait_time)
