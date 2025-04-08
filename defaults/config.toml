@@ -1,0 +1,9 @@
+[Settings]
+KodKawasan = "PHG03"
+AzanFile = "azan.m4a"
+YearlyAzanCsvFile = "jadual_waktu_solat_JAKIM_2025.csv"
+
+[Telegram]
+BotToken = ""  # Replace with your actual bot token
+ChatId = ""  # Replace with your actual user id
+

@@ -6,11 +6,3 @@ userspace/
 
 # Virtualenv
 venv/
-
-# Git
-.gitignore
-.dockerignore
-Dockerfile
-LICENSE
-README.md
-
