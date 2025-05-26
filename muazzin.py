@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 
-import csv, logging, pathlib, shutil, sqlite3, time, tomllib
+import csv, logging, pathlib, shutil, sqlite3, subprocess, time, tomllib
 from datetime import datetime, timedelta
 from logging.handlers import RotatingFileHandler
 
 import feedparser
 import requests
-from playsound3 import playsound
 import telegram
 
 # Set variables and instances
@@ -27,16 +26,32 @@ def load_config():
     config_file = BASE_DIR.joinpath('userspace', 'config.toml')
     if not config_file.exists():
         logger.info('Setting app for first use.')
-        shutil.copy(
-            BASE_DIR.joinpath('defaults', 'config.toml'),
-            config_file)
-        shutil.copy(
-            BASE_DIR.joinpath('defaults', 'azan.m4a'),
-            BASE_DIR.joinpath('userspace', 'azan.m4a'))
+        shutil.copy(BASE_DIR.joinpath('defaults', 'config.toml'), config_file)
     logger.info('Reloading app config.')
     with open(config_file, 'rb') as opened_file:
         app_config = tomllib.load(opened_file)
+    copy_default_files(app_config)
     return app_config
+
+def copy_default_files(app_config):
+    azan_filename = app_config['Settings']['AzanFile']
+    azan_file = BASE_DIR.joinpath('userspace', azan_filename)
+    if not azan_file.exists() and azan_filename != '':
+        shutil.copy(BASE_DIR.joinpath('defaults', azan_filename), azan_file)
+
+    yearly_filename = app_config['Settings']['YearlyAzanCsvFile']
+    yearly_file = BASE_DIR.joinpath('userspace', yearly_filename)
+    if not yearly_file.exists():
+        shutil.copy(BASE_DIR.joinpath('defaults', yearly_filename), yearly_file)
+
+def send_telegram_message(app_config, message, parse_mode='Markdown'):
+    bot_token = app_config['Telegram']['BotToken']
+    chat_id = app_config['Telegram']['ChatId']
+    if bot_token != '':
+        telegram_bot = telegram.TelegramBot(bot_token)
+        telegram_bot.send_message(chat_id=chat_id, text=message, parse_mode=parse_mode)
+    else:
+        logger.info('Bot token not set. No messages sent.')
 
 def setup_sqlite_db():
     if app_db.exists():
@@ -206,11 +221,14 @@ def schedule_for_next_azan():
     
 def standby_azan(azan_dt):
     logger.info('Standby each seconds until next azan.')
+    app_config = load_config()
+    send_telegram_message(app_config, 'Azan will commence within 1 minutes.')
     while True:
         if datetime.now().minute == azan_dt.minute:
             logger.info('-- Azan time is now.')
-            app_config = load_config()
-            playsound(BASE_DIR.joinpath('userspace', app_config['Settings']['AzanFile']).resolve())
+            send_telegram_message(app_config, 'It is now time for prayer.')
+            soundfile = BASE_DIR.joinpath('userspace', app_config['Settings']['AzanFile']).resolve()
+            subprocess.run(['gst-play-1.0', '--no-interactive', '--quiet', '--audiosink=alsasink', soundfile])
             break
         time.sleep(1)
 
@@ -232,21 +250,17 @@ def main():
             save_azan_times(azan_times)
             
             # Craft telegram message about azan times
-            bot_token = app_config['Telegram']['BotToken']
-            chat_id = app_config['Telegram']['ChatId']
-            if bot_token != '':
-                message = '' + \
-                    f'*Waktu Azan {azan_times["last_update"]}*\n' + \
-                    f'Imsak : {azan_times["azan_times"]["imsak"]}\n' + \
-                    f'Subuh : {azan_times["azan_times"]["subuh"]}\n' + \
-                    f'Syuruk : {azan_times["azan_times"]["syuruk"]}\n' + \
-                    f'Dhuha : {azan_times["azan_times"]["dhuha"]}\n' + \
-                    f'Zohor : {azan_times["azan_times"]["zohor"]}\n' + \
-                    f'Asar : {azan_times["azan_times"]["asar"]}\n' + \
-                    f'Maghrib : {azan_times["azan_times"]["maghrib"]}\n' + \
-                    f'Isyak : {azan_times["azan_times"]["isyak"]}'
-                telegram_bot = telegram.TelegramBot(bot_token)
-                telegram_bot.send_message(chat_id=chat_id, text=message, parse_mode='Markdown')
+            message = '' + \
+                f'*Waktu Azan {azan_times["last_update"]}*\n' + \
+                f'Imsak : {azan_times["azan_times"]["imsak"]}\n' + \
+                f'Subuh : {azan_times["azan_times"]["subuh"]}\n' + \
+                f'Syuruk : {azan_times["azan_times"]["syuruk"]}\n' + \
+                f'Dhuha : {azan_times["azan_times"]["dhuha"]}\n' + \
+                f'Zohor : {azan_times["azan_times"]["zohor"]}\n' + \
+                f'Asar : {azan_times["azan_times"]["asar"]}\n' + \
+                f'Maghrib : {azan_times["azan_times"]["maghrib"]}\n' + \
+                f'Isyak : {azan_times["azan_times"]["isyak"]}'
+            send_telegram_message(app_config, message)
 
 if __name__ == '__main__':
     main()
