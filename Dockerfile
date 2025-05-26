@@ -1,7 +1,6 @@
 FROM alpine:3
 
 RUN apk add --no-cache \
-  pipewire wireplumber \
   gst-plugins-good gst-plugins-bad \
   python3 py3-pip tzdata
 
