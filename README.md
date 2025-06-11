@@ -24,7 +24,10 @@ This app uses the power of `Docker Engine` and can run on any device that runs D
         --detach \
         --restart unless-stopped \
         --device /dev/snd \
+        --env PULSE_SERVER=unix:/run/user/1000/pulse/native \
+        --volume /run/user/1000/pulse/native:/run/user/1000/pulse/native \
         --volume $(pwd)/userspace:/home/muazzin/userspace \
+        --name muazzin \
         muazzin
     ```
 1. New folder `userspace` will be created for you with default `config.toml` and `azan.m4a` file. You may change these file as you like.
