@@ -228,7 +228,7 @@ def standby_azan(azan_dt):
             logger.info('-- Azan time is now.')
             send_telegram_message(app_config, 'It is now time for prayer.')
             soundfile = BASE_DIR.joinpath('userspace', app_config['Settings']['AzanFile']).resolve()
-            subprocess.run(['gst-play-1.0', '--no-interactive', '--quiet', '--audiosink=alsasink', soundfile])
+            subprocess.run(['gst-play-1.0', '--no-interactive', '--quiet', soundfile])
             break
         time.sleep(1)
 
