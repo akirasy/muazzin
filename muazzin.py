@@ -232,6 +232,19 @@ def standby_azan(azan_dt):
             break
         time.sleep(1)
 
+def craft_telegram_message(azan_times):
+    message = '' + \
+        f'*Waktu Azan {azan_times["last_update"]}*\n' + \
+        f'Imsak : {azan_times["azan_times"]["imsak"]}\n' + \
+        f'Subuh : {azan_times["azan_times"]["subuh"]}\n' + \
+        f'Syuruk : {azan_times["azan_times"]["syuruk"]}\n' + \
+        f'Dhuha : {azan_times["azan_times"]["dhuha"]}\n' + \
+        f'Zohor : {azan_times["azan_times"]["zohor"]}\n' + \
+        f'Asar : {azan_times["azan_times"]["asar"]}\n' + \
+        f'Maghrib : {azan_times["azan_times"]["maghrib"]}\n' + \
+        f'Isyak : {azan_times["azan_times"]["isyak"]}'
+    return message
+
 def main():
     logger.info('===== START MUAZZIN =====')
     setup_sqlite_db()
@@ -249,17 +262,7 @@ def main():
             azan_times = fetch_azan_times(feed_link)
             save_azan_times(azan_times)
             
-            # Craft telegram message about azan times
-            message = '' + \
-                f'*Waktu Azan {azan_times["last_update"]}*\n' + \
-                f'Imsak : {azan_times["azan_times"]["imsak"]}\n' + \
-                f'Subuh : {azan_times["azan_times"]["subuh"]}\n' + \
-                f'Syuruk : {azan_times["azan_times"]["syuruk"]}\n' + \
-                f'Dhuha : {azan_times["azan_times"]["dhuha"]}\n' + \
-                f'Zohor : {azan_times["azan_times"]["zohor"]}\n' + \
-                f'Asar : {azan_times["azan_times"]["asar"]}\n' + \
-                f'Maghrib : {azan_times["azan_times"]["maghrib"]}\n' + \
-                f'Isyak : {azan_times["azan_times"]["isyak"]}'
+            message = craft_telegram_message(azan_times)
             send_telegram_message(app_config, message)
 
 if __name__ == '__main__':
