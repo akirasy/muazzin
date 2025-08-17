@@ -56,8 +56,9 @@ def populate_app_db():
 
     with sqlite3.connect(app_db) as db_connection:
         cursor = db_connection.cursor()
+        cursor.execute('DELETE FROM yearly;')
         cursor.executemany('''INSERT INTO yearly 
-            VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''', data_array)
+            VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?);''', data_array)
         cursor.execute('''INSERT OR IGNORE INTO daily(rowid, subuh, zohor, asar, maghrib, isyak)
             VALUES(1, '06:00:00', '13:00:00', '16:30:00', '19:30:00', '20:30:00');''')
         db_connection.commit()
