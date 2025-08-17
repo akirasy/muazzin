@@ -127,7 +127,7 @@ def query_azan_time():
         query_result = cursor.fetchone()
     return query_result
 
-def schedule_for_next_azan(app_config):
+def schedule_for_next_azan(app_config, telegram_bot):
     logger.info('Create schedule for next azan.')
     query_result = query_azan_time()
     now = datetime.now()
@@ -147,7 +147,7 @@ def schedule_for_next_azan(app_config):
             logger.info(f'-- Next azan is in {round(wait_time/60, 2)} minutes ({round(wait_time/(60*60), 2)} hours).')
             if wait_time > 60:
                 time.sleep(wait_time-60)
-            standby_azan(azan_dt, app_config)
+            standby_azan(azan_dt, app_config, telegram_bot)
         else:
             logger.info(f'-- It has already passed.')
     logger.info('-- Schedule check is done for today.')
@@ -163,26 +163,42 @@ def schedule_for_next_azan(app_config):
         logger.info(f'-- Will check again at 1 am tomorrow ({round(wait_time/(60*60), 2)} hours)')
         time.sleep(wait_time)
     
-def standby_azan(azan_dt, app_config):
+def standby_azan(azan_dt, app_config, telegram_bot):
     logger.info('Standby each seconds until next azan.')
-    send_telegram_message(app_config, 'Azan will commence within 1 minutes.')
+    send_telegram_message(telegram_bot, 'Azan will commence within 1 minutes.')
     while True:
         if datetime.now().minute == azan_dt.minute:
             logger.info('-- Azan time is now.')
-            send_telegram_message(app_config, 'It is now time for prayer.')
+            send_telegram_message(telegram_bot, 'It is now time for prayer.')
             soundfile = BASE_DIR.joinpath('userspace', app_config['Settings']['AzanFile']).resolve()
             subprocess.run(['gst-play-1.0', '--no-interactive', '--quiet', soundfile])
             break
         time.sleep(1)
 
-def send_telegram_message(app_config, message, parse_mode='Markdown'):
+def get_telegram_creds(app_config):
     bot_token = app_config['Telegram']['BotToken']
     chat_id = app_config['Telegram']['ChatId']
     if bot_token != '':
-        telegram_bot = telegram.TelegramBot(bot_token)
-        telegram_bot.send_message(chat_id=chat_id, text=message, parse_mode=parse_mode)
+        return {
+            'telegram_bot': telegram.TelegramBot(bot_token),
+            'chat_id': chat_id
+        }
     else:
-        logger.info('Bot token not set. No message sent.')
+        logger.info('TelegramBot service not set.')
+        return None
+
+def send_telegram_message(telegram_creds, message, parse_mode='Markdown'):
+    if telegram_creds:
+        telegram_bot = telegram_creds['telegram_bot']
+        chat_id = telegram_creds['chat_id']
+        telegram_bot.send_message(
+            chat_id=chat_id, 
+            text=message, 
+            parse_mode=parse_mode
+        )
+    else:
+        logger.info('TelegramBot service not set. No message sent.')
+    
 
 def create_message_azan_daily(azan_times):
     message = '' + \
@@ -210,6 +226,7 @@ def main():
     app_config = load_app_config()
     kod_kawasan = app_config['Settings']['KodKawasan']
     feed_link = 'https://www.e-solat.gov.my/index.php?r=esolatApi/xmlfeed&zon=' + kod_kawasan
+    telegram_bot = get_telegram_creds(app_config)
 
     while True:
         logger.info('Muazzin is working.')
@@ -222,12 +239,12 @@ def main():
         else:
             azan_data = azan_time_internal
             logger.info('Warning! There is difference in local azan time and web azan time.')
-            send_telegram_message(app_config, 'There is difference in local azan time and web azan time.')
+            send_telegram_message(telegram_bot, 'There is difference in local azan time and web azan time.')
         update_db_daily(azan_data)
         message = create_message_azan_daily(azan_data)
-        send_telegram_message(app_config, message)
+        send_telegram_message(telegram_bot, message)
 
-        schedule_for_next_azan(app_config)
+        schedule_for_next_azan(app_config, telegram_bot)
 
 if __name__ == '__main__':
     main()
