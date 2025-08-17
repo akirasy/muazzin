@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-import csv, logging, pathlib, shutil, sqlite3, subprocess, time, tomllib
+import csv, logging, pathlib, shutil, sqlite3, subprocess, sys, time, tomllib
 from datetime import datetime, timedelta
 from logging.handlers import RotatingFileHandler
 
@@ -250,5 +250,9 @@ def main():
         schedule_for_next_azan(app_config, telegram_bot)
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        logger.info('Received Ctrl-C. Shutting down gracefully.')
+        sys.exit(0)
 
