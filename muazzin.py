@@ -15,11 +15,11 @@ app_db       = BASE_DIR.joinpath('userspace', 'app.db')
 
 # Logging features
 logging.basicConfig(
-    level=logging.INFO, 
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[RotatingFileHandler(
-        log_file, mode='a', maxBytes=5*1024*1024, 
-        backupCount=2, encoding=None, delay=0)])
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        handlers=[RotatingFileHandler(
+            log_file, mode='a', maxBytes=5*1024*1024,
+            backupCount=2, encoding=None, delay=0)])
 logger = logging.getLogger(__name__)
 
 def copy_default_file(filename, overwrite=False):
@@ -76,12 +76,12 @@ def fetch_azan_time_internal(date):
         cursor.execute('''SELECT * FROM yearly WHERE Tarikh=?''', (date.strftime('%d-%b-%Y'),))
         query_result = cursor.fetchone()
     return { 
-        'subuh'  : datetime.strptime(query_result[4], '%I:%M %p').strftime('%H:%M:%S'),
-        'zohor'  : datetime.strptime(query_result[6], '%I:%M %p').strftime('%H:%M:%S'),
-        'asar'   : datetime.strptime(query_result[7], '%I:%M %p').strftime('%H:%M:%S'),
-        'maghrib': datetime.strptime(query_result[8], '%I:%M %p').strftime('%H:%M:%S'),
-        'isyak'  : datetime.strptime(query_result[9], '%I:%M %p').strftime('%H:%M:%S') 
-        }
+            'subuh'  : datetime.strptime(query_result[4], '%I:%M %p').strftime('%H:%M:%S'),
+            'zohor'  : datetime.strptime(query_result[6], '%I:%M %p').strftime('%H:%M:%S'),
+            'asar'   : datetime.strptime(query_result[7], '%I:%M %p').strftime('%H:%M:%S'),
+            'maghrib': datetime.strptime(query_result[8], '%I:%M %p').strftime('%H:%M:%S'),
+            'isyak'  : datetime.strptime(query_result[9], '%I:%M %p').strftime('%H:%M:%S')
+            }
 
 def fetch_azan_time_feed(date, feed_link):
     logger.info('-- Fetching azan time from API server.')
@@ -93,22 +93,22 @@ def fetch_azan_time_feed(date, feed_link):
             azan_times[i['title'].lower()] = i['summary']
         logger.info('-- Data received successfully.')
         return {
-            'subuh'  : azan_times['subuh'],
-            'zohor'  : azan_times['zohor'],
-            'asar'   : azan_times['asar'],
-            'maghrib': azan_times['maghrib'],
-            'isyak'  : azan_times['isyak']
-            }
+                'subuh'  : azan_times['subuh'],
+                'zohor'  : azan_times['zohor'],
+                'asar'   : azan_times['asar'],
+                'maghrib': azan_times['maghrib'],
+                'isyak'  : azan_times['isyak']
+                }
 
     except Exception as error:
         logger.error(f'-- {error}')
         return { 
-            'subuh'  :'00:00:00', 
-            'zohor'  :'00:00:00', 
-            'asar'   :'00:00:00', 
-            'maghrib':'00:00:00', 
-            'isyak'  :'00:00:00' 
-            }
+                'subuh'  :'00:00:00',
+                'zohor'  :'00:00:00',
+                'asar'   :'00:00:00',
+                'maghrib':'00:00:00',
+                'isyak'  :'00:00:00'
+                }
 
 def update_db_daily(azan_time):
     logger.info('Save data to app database.')
@@ -132,17 +132,17 @@ def schedule_for_next_azan(app_config, telegram_bot):
     logger.info('Create schedule for next azan.')
     waktu = ['Subuh', 'Zohor', 'Asar', 'Maghrib', 'Isyak']
     query_result = query_azan_time()
-    now = datetime.now()
     wait_time = None
 
     for waktu_name, azan_time in zip(waktu, query_result):
         logger.info(f'-- Checking azan {waktu_name} at {azan_time}')
+        now = datetime.now()
         azan_dt = datetime(
-            year=now.year, 
-            month=now.month, 
-            day=now.day, 
-            hour=datetime.strptime(azan_time, '%H:%M:%S').hour,
-            minute=datetime.strptime(azan_time, '%H:%M:%S').minute)
+                year=now.year,
+                month=now.month,
+                day=now.day,
+                hour=datetime.strptime(azan_time, '%H:%M:%S').hour,
+                minute=datetime.strptime(azan_time, '%H:%M:%S').minute)
 
         if now < azan_dt:
             wait_time = (azan_dt - now).total_seconds()
@@ -152,25 +152,26 @@ def schedule_for_next_azan(app_config, telegram_bot):
             standby_azan(azan_dt, app_config, telegram_bot, waktu_name)
         else:
             logger.info(f'-- It has already passed.')
+
     logger.info('-- Schedule check is done for today.')
 
     if wait_time is None:
         logger.info(f'-- Last azan for the day has passed. Prepare schedule for next day.')
         next_day_dt = datetime(
-            year=now.year, 
-            month=now.month, 
-            day=now.day, 
-            hour=1) + timedelta(days=1)
+                year=now.year,
+                month=now.month,
+                day=now.day,
+                hour=1) + timedelta(days=1)
         wait_time = (next_day_dt - now).total_seconds()
         logger.info(f'-- Will check again at 1 am tomorrow ({round(wait_time/(60*60), 2)} hours)')
         time.sleep(wait_time)
-    
+
 def standby_azan(azan_dt, app_config, telegram_bot, waktu_name):
     logger.info('Standby each seconds until next azan.')
-    send_telegram_message(telegram_bot, 'Azan {waktu_name} will commence within 1 minutes.')
+    send_telegram_message(telegram_bot, f'Azan {waktu_name} will commence within 1 minutes.')
     while True:
         if datetime.now().minute == azan_dt.minute:
-            logger.info('-- Azan {waktu_name} is now.')
+            logger.info(f'-- Azan {waktu_name} is now.')
             send_telegram_message(telegram_bot, 'It is now time for {waktu_name} prayer.')
             soundfile = BASE_DIR.joinpath('userspace', app_config['Settings']['AzanFile']).resolve()
             subprocess.run(['gst-play-1.0', '--no-interactive', '--quiet', soundfile])
@@ -182,9 +183,9 @@ def get_telegram_creds(app_config):
     chat_id = app_config['Telegram']['ChatId']
     if bot_token != '':
         return {
-            'telegram_bot': telegram.TelegramBot(bot_token),
-            'chat_id': chat_id
-        }
+                'telegram_bot': telegram.TelegramBot(bot_token),
+                'chat_id': chat_id
+                }
     else:
         logger.info('TelegramBot service not set.')
         return None
@@ -194,29 +195,29 @@ def send_telegram_message(telegram_creds, message, parse_mode='Markdown'):
         telegram_bot = telegram_creds['telegram_bot']
         chat_id = telegram_creds['chat_id']
         telegram_bot.send_message(
-            chat_id=chat_id, 
-            text=message, 
-            parse_mode=parse_mode
-        )
+                chat_id=chat_id,
+                text=message,
+                parse_mode=parse_mode
+                )
     else:
         logger.info('TelegramBot service not set. No message sent.')
-    
+
 
 def create_message_azan_daily(azan_times):
     message = '' + \
-        f'*Waktu Azan*\n' + \
-        f'Subuh : {azan_times["subuh"]}\n' + \
-        f'Zohor : {azan_times["zohor"]}\n' + \
-        f'Asar : {azan_times["asar"]}\n' + \
-        f'Maghrib : {azan_times["maghrib"]}\n' + \
-        f'Isyak : {azan_times["isyak"]}'
+            f'*Waktu Azan*\n' + \
+            f'Subuh : {azan_times["subuh"]}\n' + \
+            f'Zohor : {azan_times["zohor"]}\n' + \
+            f'Asar : {azan_times["asar"]}\n' + \
+            f'Maghrib : {azan_times["maghrib"]}\n' + \
+            f'Isyak : {azan_times["isyak"]}'
     return message
 
 def main():
     logger.info('===== START MUAZZIN =====')
 
     logger.info('Preparing muazzin setup.')
-    
+
     existing_config_file = BASE_DIR.joinpath('userspace', 'config.toml')
     copy_default_file('config.toml')
     copy_default_file('azan.m4a')
@@ -224,7 +225,7 @@ def main():
 
     create_app_db()
     populate_app_db()
-    
+
     app_config = load_app_config()
     kod_kawasan = app_config['Settings']['KodKawasan']
     feed_link = 'https://www.e-solat.gov.my/index.php?r=esolatApi/xmlfeed&zon=' + kod_kawasan
