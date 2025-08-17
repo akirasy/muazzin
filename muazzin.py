@@ -130,25 +130,26 @@ def query_azan_time():
 
 def schedule_for_next_azan(app_config, telegram_bot):
     logger.info('Create schedule for next azan.')
+    waktu = ['Subuh', 'Zohor', 'Asar', 'Maghrib', 'Isyak']
     query_result = query_azan_time()
     now = datetime.now()
     wait_time = None
 
-    for i in query_result:
-        logger.info(f'-- Checking azan at {i}')
+    for waktu_name, azan_time in zip(waktu, query_result):
+        logger.info(f'-- Checking azan {waktu_name} at {azan_time}')
         azan_dt = datetime(
             year=now.year, 
             month=now.month, 
             day=now.day, 
-            hour=datetime.strptime(i, '%H:%M:%S').hour,
-            minute=datetime.strptime(i, '%H:%M:%S').minute)
+            hour=datetime.strptime(azan_time, '%H:%M:%S').hour,
+            minute=datetime.strptime(azan_time, '%H:%M:%S').minute)
 
         if now < azan_dt:
             wait_time = (azan_dt - now).total_seconds()
             logger.info(f'-- Next azan is in {round(wait_time/60, 2)} minutes ({round(wait_time/(60*60), 2)} hours).')
             if wait_time > 60:
                 time.sleep(wait_time-60)
-            standby_azan(azan_dt, app_config, telegram_bot)
+            standby_azan(azan_dt, app_config, telegram_bot, waktu_name)
         else:
             logger.info(f'-- It has already passed.')
     logger.info('-- Schedule check is done for today.')
@@ -164,13 +165,13 @@ def schedule_for_next_azan(app_config, telegram_bot):
         logger.info(f'-- Will check again at 1 am tomorrow ({round(wait_time/(60*60), 2)} hours)')
         time.sleep(wait_time)
     
-def standby_azan(azan_dt, app_config, telegram_bot):
+def standby_azan(azan_dt, app_config, telegram_bot, waktu_name):
     logger.info('Standby each seconds until next azan.')
-    send_telegram_message(telegram_bot, 'Azan will commence within 1 minutes.')
+    send_telegram_message(telegram_bot, 'Azan {waktu_name} will commence within 1 minutes.')
     while True:
         if datetime.now().minute == azan_dt.minute:
-            logger.info('-- Azan time is now.')
-            send_telegram_message(telegram_bot, 'It is now time for prayer.')
+            logger.info('-- Azan {waktu_name} is now.')
+            send_telegram_message(telegram_bot, 'It is now time for {waktu_name} prayer.')
             soundfile = BASE_DIR.joinpath('userspace', app_config['Settings']['AzanFile']).resolve()
             subprocess.run(['gst-play-1.0', '--no-interactive', '--quiet', soundfile])
             break
