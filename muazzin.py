@@ -167,16 +167,17 @@ def schedule_for_next_azan(app_config, telegram_bot):
         time.sleep(wait_time)
 
 def standby_azan(azan_dt, app_config, telegram_bot, waktu_name):
-    logger.info('Standby each seconds until next azan.')
+    logger.info('Recalculate delay until next azan.')
     send_telegram_message(telegram_bot, f'Azan {waktu_name} will commence within 1 minutes.')
-    while True:
-        if datetime.now().minute == azan_dt.minute:
-            logger.info(f'-- Azan {waktu_name} is now.')
-            send_telegram_message(telegram_bot, 'It is now time for {waktu_name} prayer.')
-            soundfile = BASE_DIR.joinpath('userspace', app_config['Settings']['AzanFile']).resolve()
-            subprocess.run(['gst-play-1.0', '--no-interactive', '--quiet', soundfile])
-            break
-        time.sleep(1)
+
+    now = datetime.now()
+    second_wait_time = azan_dt - now
+    time.sleep(second_wait_time.seconds)
+
+    logger.info(f'-- Azan {waktu_name} is now.')
+    send_telegram_message(telegram_bot, f'It is now time for {waktu_name} prayer.')
+    soundfile = BASE_DIR.joinpath('userspace', app_config['Settings']['AzanFile']).resolve()
+    subprocess.run(['gst-play-1.0', '--no-interactive', '--quiet', soundfile])
 
 def get_telegram_creds(app_config):
     bot_token = app_config['Telegram']['BotToken']
