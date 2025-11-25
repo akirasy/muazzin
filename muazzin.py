@@ -8,6 +8,9 @@ import feedparser
 import requests
 import telegram
 
+import threading
+from web import app as web_app
+
 # Set variables and instances
 BASE_DIR     = pathlib.Path(__file__).parent
 log_file     = BASE_DIR.joinpath('userspace', 'logfile.txt')
@@ -21,6 +24,9 @@ logging.basicConfig(
         log_file, mode='a', maxBytes=5*1024*1024, 
         backupCount=2, encoding=None, delay=0)])
 logger = logging.getLogger(__name__)
+
+def run_web_server():
+    web_app.run(host='0.0.0.0', port=8080)
 
 def load_config():
     config_file = BASE_DIR.joinpath('userspace', 'config.toml')
@@ -234,6 +240,12 @@ def standby_azan(azan_dt):
 
 def main():
     logger.info('===== START MUAZZIN =====')
+    
+    # Start the web server in a separate thread
+    web_thread = threading.Thread(target=run_web_server)
+    web_thread.daemon = True
+    web_thread.start()
+    
     setup_sqlite_db()
     load_azan_csv()
     while True:
