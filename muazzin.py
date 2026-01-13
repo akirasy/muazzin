@@ -81,7 +81,7 @@ def setup_sqlite_db():
                 VALUES(1, '05:50:00', '06:00:00', '07:10:00', '07:30:00', '13:00:00', '16:30:00', '19:30:00', '20:30:00');''')
             db_connection.commit()
 
-def fetch_azan_times(feed_link):
+def fetch_azan_times(app_config, feed_link):
     '''Get azan time from API server. Return value should be in this structure as string:
     { 'last_update': '%d-%m-%Y %H:%M:%S',
       'azan_times': { 'imsak'  : '%H:%M:%S',
@@ -109,34 +109,34 @@ def fetch_azan_times(feed_link):
         return {'last_update':last_update, 'azan_times': azan_times}
     except requests.exceptions.ConnectionError:
         logger.error('-- Warning. No connection to the API server.')
-        app_config = load_config()
-        bot_token = app_config['Telegram']['BotToken']
-        chat_id = app_config['Telegram']['ChatId']
-        if bot_token != '':
-            telegram_bot = telegram.TelegramBot(bot_token)
-            telegram_bot.send_message(chat_id, 'Warning. No connection to the API server. Azan time will update using yearly database.')
+        send_telegram_message(app_config, 'Warning. No connection to the API server. Azan time will update using yearly database.')
         today = datetime.now()
         return fetch_azan_times_from_yearly(today)
 
-def load_azan_csv():
-    app_config = load_config()
+def load_azan_csv(app_config):
     csv_file = BASE_DIR.joinpath('userspace', app_config['Settings']['YearlyAzanCsvFile'])
-    if csv_file.exists():
+    if not csv_file.exists():
+        return
+
+    with sqlite3.connect(app_db) as db_connection:
+        cursor = db_connection.cursor()
+        cursor.execute('SELECT COUNT(*) FROM yearly')
+        if cursor.fetchone()[0] > 0:
+            logger.info('Yearly prayer times already loaded.')
+            return
+
+        logger.info('Loading yearly prayer times from CSV.')
         with open(csv_file, newline='') as csvfile:
             reader = csv.reader(csvfile)
             next(reader) # Skips header
-            data_array = [row for row in reader]
-        with sqlite3.connect(app_db) as db_connection:
-            cursor = db_connection.cursor()
-            cursor.executemany('INSERT INTO yearly VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', data_array)
-            db_connection.commit()
+            cursor.executemany('INSERT INTO yearly VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', reader)
+        db_connection.commit()
 
 def fetch_azan_times_from_yearly(date):
     with sqlite3.connect(app_db) as db_connection:
         cursor = db_connection.cursor()
         cursor.execute('''SELECT * FROM yearly WHERE Tarikh=?''', (date.strftime('%d-%b-%Y'),))
         query_result = cursor.fetchone()
-        db_connection.commit()
     return { 
         'last_update': date.strftime('%d-%m-%Y %H:%M:%S'),
         'azan_times': { 
@@ -182,7 +182,7 @@ def check_azan_time_is_current():
     logger.info(f'-- Azan time is current: {status}')
     return status
 
-def schedule_for_next_azan():
+def schedule_for_next_azan(app_config):
     logger.info('Create schedule for next azan.')
     with sqlite3.connect(app_db) as db_connection:
         cursor = db_connection.cursor()
@@ -205,11 +205,8 @@ def schedule_for_next_azan():
             if wait_time > 60:
                 wake_up_dt = now + timedelta(seconds=(wait_time-60))
                 logger.info(f'-- Sleeping now. Will resume at: {wake_up_dt}.')
-                if wake_up_dt > azan_dt:
-                    time.sleep(wait_time-120)
-                else:
-                    time.sleep(wait_time-60)
-            standby_azan(azan_dt)
+                time.sleep(wait_time-60)
+            standby_azan(app_config, azan_dt)
         else:
             logger.info(f'-- It has already passed.')
     logger.info('-- Schedule check is done for today.')
@@ -225,18 +222,19 @@ def schedule_for_next_azan():
         logger.info(f'-- Will check again at 1 am tomorrow ({round(wait_time/(60*60), 2)} hours)')
         time.sleep(wait_time)
     
-def standby_azan(azan_dt):
+def standby_azan(app_config, azan_dt):
     logger.info('Standby each seconds until next azan.')
-    app_config = load_config()
     send_telegram_message(app_config, 'Azan will commence within 1 minutes.')
-    while True:
-        if datetime.now().minute == azan_dt.minute:
-            logger.info('-- Azan time is now.')
-            send_telegram_message(app_config, 'It is now time for prayer.')
-            soundfile = BASE_DIR.joinpath('userspace', app_config['Settings']['AzanFile']).resolve()
-            subprocess.run(['gst-play-1.0', '--no-interactive', '--quiet', '--audiosink=alsasink', soundfile])
-            break
-        time.sleep(1)
+    
+    now = datetime.now()
+    wait_seconds = (azan_dt - now).total_seconds()
+    if wait_seconds > 0:
+        time.sleep(wait_seconds)
+
+    logger.info('-- Azan time is now.')
+    send_telegram_message(app_config, 'It is now time for prayer.')
+    soundfile = BASE_DIR.joinpath('userspace', app_config['Settings']['AzanFile']).resolve()
+    subprocess.run(['gst-play-1.0', '--no-interactive', '--quiet', '--audiosink=alsasink', soundfile])
 
 def main():
     logger.info('===== START MUAZZIN =====')
@@ -246,19 +244,19 @@ def main():
     web_thread.daemon = True
     web_thread.start()
     
+    app_config = load_config()
     setup_sqlite_db()
-    load_azan_csv()
+    load_azan_csv(app_config)
     while True:
         azan_time_is_current = check_azan_time_is_current()
         if azan_time_is_current:
             # Start polling for azan
-            schedule_for_next_azan()
+            schedule_for_next_azan(app_config)
         else:
             # Update azan times
-            app_config = load_config()
             kod_kawasan = app_config['Settings']['KodKawasan']
             feed_link = 'https://www.e-solat.gov.my/index.php?r=esolatApi/xmlfeed&zon=' + kod_kawasan
-            azan_times = fetch_azan_times(feed_link)
+            azan_times = fetch_azan_times(app_config, feed_link)
             save_azan_times(azan_times)
             
             # Craft telegram message about azan times
